@@ -829,6 +829,34 @@ app.get('/admin/customers/:clientId/payments', adminLimiter, adminAuth, async (r
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+
+// ── Customer cancellation request ────────────
+app.post('/api/customer/cancel', async (req, res) => {
+  const { clientId, reason } = req.body;
+  const sessionToken = req.headers['x-session-token'];
+  if (!clientId) return res.status(400).json({ error: 'clientId required' });
+
+  const s = getSupabase();
+  if (s) {
+    try {
+      // Log cancellation request
+      await fetch(`${s.url}/rest/v1/cancellation_requests`, {
+        method: 'POST',
+        headers: { 'Content-Type':'application/json','apikey':s.key,'Authorization':`Bearer ${s.key}`,'Prefer':'return=minimal' },
+        body: JSON.stringify({ client_id: clientId, reason: reason || 'Customer requested', confirmed: true })
+      });
+      // Update customer billing status to 'cancelled'
+      await fetch(`${s.url}/rest/v1/customers?client_id=eq.${clientId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type':'application/json','apikey':s.key,'Authorization':`Bearer ${s.key}`,'Prefer':'return=minimal' },
+        body: JSON.stringify({ billing_status: 'cancelled', updated_at: new Date().toISOString() })
+      });
+      console.log(`Cancellation submitted: ${clientId}`);
+    } catch(e) { console.error('Cancel error:', e); }
+  }
+  res.json({ success: true, message: 'Cancellation recorded. Account active until billing period ends.' });
+});
+
 app.listen(PORT, () => {
   console.log(`Axiom OS v${PLATFORM_VERSION.version} — port ${PORT}`);
 });
